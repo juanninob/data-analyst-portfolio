@@ -1,0 +1,35 @@
+import spotipy
+import spotipy.util as util
+import pandas as pd
+
+
+keys = {'id': 'ID DE SPOTIFY DEVELOPER', 
+        'secret':'SECRET DE SPOTIFY DEVELOPER', 
+        'username': 'SPOTIFY NOMBRE',
+        'url': 'http://localhost:8888/callback'}
+
+
+def top_50_canciones_spotify(keys, year, country):
+    token = util.prompt_for_user_token(keys['username'], scope="user-top-read", client_id = keys['id'], client_secret = keys['secret'], redirect_uri=keys['url'])
+    sp = spotipy.Spotify(auth=token) #PREPARAR_LA_API
+
+    #LLAMAR LA API
+    data = sp.search(q="year:{}".format(year), type="track", market = country, limit=50) 
+    canciones = data["tracks"]["items"]
+    canciones.sort(key=lambda x: x['popularity'], reverse=True)
+
+    #NORMALIZAR LOS DATOS
+    df = pd.json_normalize(canciones) #NORMALIZAR EL JSON
+    df_final = df.join(df['artists'].apply(lambda x: pd.Series({'nombre_artista': x[0]['name'], 'artista_id': x[0]['id']})))
+    df_final = df_final[['name','nombre_artista', 'artista_id', 'popularity']]
+
+    #TRAER LOS GENEROS
+    df_final['genero'] = df_final['artista_id'].apply(lambda x: sp.artist(artist_id=x)['genres'])
+    df_final['genero'] = df_final['genero'].apply(lambda x: 'Sin genero' if not x else x[0]) #NOTA: SE TOMA SOLO EL PRIMER GÉNERO DE LA LISTA AL SER EL MÄS RELEVANTE
+    df_final= df_final[['name', 'nombre_artista', 'genero', 'popularity']]
+    
+    #EXPORTAR CSVS
+    generos = df_final.groupby('genero', as_index=False)
+    generos.apply(lambda x: x.to_csv("{}.csv".format(x.name), index = False, encoding='utf-8-sig'))
+
+    return df_final
